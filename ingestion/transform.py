@@ -1,6 +1,8 @@
 import os
 import json
 import pandas as pd
+import sys
+
 
 RAW_DATA_DIR = "data/raw"
 SILVER_DATA_DIR = "data/silver"
@@ -11,23 +13,45 @@ def parse_boxscore(filepath: str, game_pk: int, date: str):
         data = json.load(f)
 
     teams = data["teams"]
+
+    home_data = teams["home"]
+    away_data = teams["away"]
+
+    home_runs = home_data["teamStats"]["batting"].get("runs", 0)
+    away_runs = away_data["teamStats"]["batting"].get("runs", 0)
+
     rows = []
 
-    for side in ["home", "away"]:
-        team_data = teams[side]
+    # Home row
+    rows.append({
+        "game_pk": game_pk,
+        "team_id": home_data["team"]["id"],
+        "team_name": home_data["team"]["name"],
+        "home_away": "home",
+        "runs": home_runs,
+        "hits": home_data["teamStats"]["batting"].get("hits", 0),
+        "errors": home_data["teamStats"]["fielding"].get("errors", 0),
+        "run_differential": home_runs - away_runs,
+        "win_flag": 1 if home_runs > away_runs else 0,
+        "date": date
+    })
 
-        rows.append({
-            "game_pk": game_pk,
-            "team_id": team_data["team"]["id"],
-            "team_name": team_data["team"]["name"],
-            "home_away": side,
-            "runs": team_data["teamStats"]["batting"].get("runs", 0),
-            "hits": team_data["teamStats"]["batting"].get("hits", 0),
-            "errors": team_data["teamStats"]["fielding"].get("errors", 0),
-            "date": date
-        })
+    # Away row
+    rows.append({
+        "game_pk": game_pk,
+        "team_id": away_data["team"]["id"],
+        "team_name": away_data["team"]["name"],
+        "home_away": "away",
+        "runs": away_runs,
+        "hits": away_data["teamStats"]["batting"].get("hits", 0),
+        "errors": away_data["teamStats"]["fielding"].get("errors", 0),
+        "run_differential": away_runs - home_runs,
+        "win_flag": 1 if away_runs > home_runs else 0,
+        "date": date
+    })
 
     return rows
+
 
 
 def transform_date(year: str, month: str, day: str):
@@ -66,15 +90,29 @@ def transform_date(year: str, month: str, day: str):
         f"day={day}"
     )
 
+
     os.makedirs(silver_partition, exist_ok=True)
 
     output_path = os.path.join(silver_partition, "team_game_stats.parquet")
 
+    # Idempotent check
+    if os.path.exists(output_path):
+        print(f"Silver file already exists for {year}-{month}-{day}. Skipping.")
+        return
+
     df.to_parquet(output_path, index=False)
 
-    print(f"Saved {output_path}")
+    print(f"Saved {output_path}")   
+
 
 
 if __name__ == "__main__":
-    #HARD CODED NOW DURING THE OFFSEASON
-    transform_date("2025", "09", "28")
+    if len(sys.argv) != 2:
+        print("Usage: python ingestion/transform.py YYYY-MM-DD")
+        sys.exit(1)
+
+    input_date = sys.argv[1]
+    year, month, day = input_date.split("-")
+
+    transform_date(year, month, day)
+
