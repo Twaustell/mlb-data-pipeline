@@ -3,7 +3,19 @@ import json
 import pandas as pd
 import sys
 import boto3
+from dotenv import load_dotenv
+import logging
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
+
+logger = logging.getLogger(__name__)
+
+load_dotenv()
+
+S3_BUCKET = os.getenv("S3_BUCKET")
 
 RAW_DATA_DIR = "data/raw"
 SILVER_DATA_DIR = "data/silver"
@@ -54,15 +66,27 @@ def parse_boxscore(filepath: str, game_pk: int, date: str):
     return rows
 
 
-def upload_to_s3(local_path: str, bucket: str, s3_key: str):
+#def upload_to_s3(local_path: str, bucket: str, s3_key: str):
+#    s3 = boto3.client("s3")
+#
+#    logger.info(f"Uploading {local_path} to s3://{bucket}/{s3_key}")
+#    s3.upload_file(local_path, bucket, s3_key)
+#    logger.info("Upload complete.")
+
+def upload_to_s3(local_path, s3_key):
+    if not S3_BUCKET:
+        raise ValueError("S3_BUCKET environment variable not set")
+
+    logger.info(f"Uploading {local_path} to s3://{S3_BUCKET}/{s3_key}")
+
     s3 = boto3.client("s3")
+    s3.upload_file(local_path, S3_BUCKET, s3_key)
 
-    print(f"Uploading {local_path} to s3://{bucket}/{s3_key}")
-    s3.upload_file(local_path, bucket, s3_key)
-    print("Upload complete.")
+    logger.info("Upload complete.")
 
 
-def transform_date(year: str, month: str, day: str):
+def transform_date(date_str: str):
+    year, month, day = date_str.split("-")
     partition_path = os.path.join(
         RAW_DATA_DIR,
         f"year={year}",
@@ -71,7 +95,7 @@ def transform_date(year: str, month: str, day: str):
     )
 
     if not os.path.exists(partition_path):
-        print("Raw partition not found.")
+        logger.info("Raw partition not found.")
         return
 
     all_rows = []
@@ -88,7 +112,7 @@ def transform_date(year: str, month: str, day: str):
     df = pd.DataFrame(all_rows)
 
     if df.empty:
-        print("No data found.")
+        logger.info("No data found.")
         return
 
     silver_partition = os.path.join(
@@ -105,28 +129,29 @@ def transform_date(year: str, month: str, day: str):
 
     # Idempotent check
     if os.path.exists(output_path):
-        print(f"Silver file already exists for {year}-{month}-{day}. Skipping.")
+        logger.info(f"Silver file already exists for {year}-{month}-{day}. Skipping.")
         return
 
     df.to_parquet(output_path, index=False)
 
-    print(f"Saved {output_path}")   
+    logger.info(f"Saved {output_path}")   
 
-    bucket_name = "mlb-data-pipeline-956959164726"
+    #bucket_name = "mlb-data-pipeline-956959164726"
 
     s3_key = f"silver/year={year}/month={month}/day={day}/team_game_stats.parquet"
 
-    upload_to_s3(output_path, bucket_name, s3_key)
+    upload_to_s3(output_path, s3_key)
 
 
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
-        print("Usage: python ingestion/transform.py YYYY-MM-DD")
+        logger.info("Usage: python ingestion/transform.py YYYY-MM-DD")
         sys.exit(1)
 
     input_date = sys.argv[1]
-    year, month, day = input_date.split("-")
 
-    transform_date(year, month, day)
+    transform_date(input_date)
+
+    
 

@@ -1,7 +1,7 @@
 import os
 import json
 from datetime import datetime
-from mlb_api import get_schedule_by_date, get_game_boxscore
+from ingestion.mlb_api import get_schedule_by_date, get_game_boxscore
 
 
 RAW_DATA_DIR = "data/raw"
@@ -54,6 +54,10 @@ def ingest_date(date: str):
 
 
 if __name__ == "__main__":
-    today = datetime.today().strftime("%Y-%m-%d")
-    #ingest_date(today)
-    ingest_date("2025-09-28")
+    import sys
+
+    if len(sys.argv) != 2:
+        print("Usage: python ingestion/run_ingestion.py YYYY-MM-DD")
+        sys.exit(1)
+
+    ingest_date(sys.argv[1])
