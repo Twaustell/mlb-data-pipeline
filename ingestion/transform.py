@@ -2,6 +2,7 @@ import os
 import json
 import pandas as pd
 import sys
+import boto3
 
 
 RAW_DATA_DIR = "data/raw"
@@ -53,6 +54,13 @@ def parse_boxscore(filepath: str, game_pk: int, date: str):
     return rows
 
 
+def upload_to_s3(local_path: str, bucket: str, s3_key: str):
+    s3 = boto3.client("s3")
+
+    print(f"Uploading {local_path} to s3://{bucket}/{s3_key}")
+    s3.upload_file(local_path, bucket, s3_key)
+    print("Upload complete.")
+
 
 def transform_date(year: str, month: str, day: str):
     partition_path = os.path.join(
@@ -103,6 +111,12 @@ def transform_date(year: str, month: str, day: str):
     df.to_parquet(output_path, index=False)
 
     print(f"Saved {output_path}")   
+
+    bucket_name = "mlb-data-pipeline-956959164726"
+
+    s3_key = f"silver/year={year}/month={month}/day={day}/team_game_stats.parquet"
+
+    upload_to_s3(output_path, bucket_name, s3_key)
 
 
 
